@@ -29,6 +29,9 @@ default_dns="$wan_dns"
 # Dns used for the black list
 black_dns="8.8.8.8:53"
 
+ipset -F gfwlist >/dev/null 2>&1 && ipset -X gfwlist >/dev/null 2>&1
+ipset -! create gfwlist nethash && ipset flush gfwlist
+
 sed -i 's/cache-size=1500/cache-size=9999/g' /etc/dnsmasq.conf
 
 echo "start to write dnsmasq"
@@ -37,6 +40,7 @@ echo "start to write dnsmasq"
 for black_ip in `cat /jffs/ss/black.txt`;
 do
 	echo "server=/.${black_ip}/127.0.0.1#${ss_tunnel_port}" >> /tmp/resolv.dnsmasq
+	echo "ipset=/.${black_ip}/gfwlist" >> /tmp/resolv.dnsmasq
 done
 
 echo "finish write dnsmasq"
@@ -47,43 +51,14 @@ echo "start ss"
 ss-tunnel -b 0.0.0.0 -s $ss_basic_server -p $ss_basic_port -c $config_file -l ${ss_tunnel_port} -L "$black_dns" -u -f /var/run/ss_tunnel.pid
 ss-redir -b 0.0.0.0 -c $config_file -f /var/run/shadowsocks.pid
 
-/sbin/service restart_dnsmasq
 
+/sbin/service restart_dnsmasq
 
 echo "update iptables"
 ## update iptables
 
-iptables -t nat -N SHADOWSOCKS
-iptables -t nat -N SHADOWSOCKS_WHITELIST
+iptables -t nat -A PREROUTING -p tcp -m set --match-set gfwlist dst -j REDIRECT --to-ports ${ss_local_port}
 
-# Ignore your shadowsocks server's addresses. It's very IMPORTANT, just be careful.
-iptables -t nat -A SHADOWSOCKS -d ${ss_basic_server} -j RETURN
-
-
-# Ignore LANs IP address
-iptables -t nat -A SHADOWSOCKS -d 0.0.0.0/8 -j RETURN
-iptables -t nat -A SHADOWSOCKS -d 10.0.0.0/8 -j RETURN
-iptables -t nat -A SHADOWSOCKS -d 127.0.0.0/8 -j RETURN
-iptables -t nat -A SHADOWSOCKS -d 169.254.0.0/16 -j RETURN
-iptables -t nat -A SHADOWSOCKS -d 172.16.0.0/12 -j RETURN
-iptables -t nat -A SHADOWSOCKS -d 192.168.0.0/16 -j RETURN
-iptables -t nat -A SHADOWSOCKS -d 224.0.0.0/4 -j RETURN
-iptables -t nat -A SHADOWSOCKS -d 240.0.0.0/4 -j RETURN
-
-# Check whitelist
-iptables -t nat -A SHADOWSOCKS -j SHADOWSOCKS_WHITELIST
-iptables -t nat -A SHADOWSOCKS -m mark --mark 1 -j RETURN
-
-# Anything else should be redirected to shadowsocks's local port
-iptables -t nat -A SHADOWSOCKS -p tcp -j REDIRECT --to-ports ${ss_local_port}
-# Apply the rules
-iptables -t nat -A PREROUTING -p tcp -j SHADOWSOCKS
-
-# Ignore China IP address
-for white_ip in `cat /jffs/ss/white_ip_list.txt`;
-do
-    iptables -t nat -A SHADOWSOCKS_WHITELIST -d "${white_ip}" -j MARK --set-mark 1
-done
 
 # forward all DNS
 iptables -t nat -A PREROUTING -p udp --dport 53 -j DNAT --to $lan_ipaddr
