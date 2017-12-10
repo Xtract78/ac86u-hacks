@@ -1,10 +1,10 @@
 #!/bin/sh
 
-ss_basic_server="###"
-ss_basic_password="###"
-ss_basic_port="2047"
-ss_basic_method="rc4-md5"
-ss_local_port="7912"
+ss_basic_server="65.49.224.148"
+ss_basic_password="YzVhN2E1MW"
+ss_basic_port="444"
+ss_basic_method="aes-256-cfb"
+ss_local_port="1080"
 ss_tunnel_port="7913"
 
 # write config file
